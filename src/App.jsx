@@ -53,6 +53,14 @@ const GoalRow = ({ goal, currentStatus, onStatusChange, concreet, onConcreetSave
   const [localConcreet, setLocalConcreet] = useState(concreet || '');
   const [localLeerlijn, setLocalLeerlijn] = useState(leerlijn || '');
   
+  const [concreetSaved, setConcreetSaved] = useState(false);
+  const [lesideeSaved, setLesideeSaved] = useState(false);
+  const [leerlijnSaved, setLeerlijnSaved] = useState(false);
+
+  const [concreetError, setConcreetError] = useState(false);
+  const [lesideeError, setLesideeError] = useState(false);
+  const [leerlijnError, setLeerlijnError] = useState(false);
+
   const [newLesideeTitel, setNewLesideeTitel] = useState('');
   const [newLesideeTekst, setNewLesideeTekst] = useState('');
 
@@ -62,12 +70,44 @@ const GoalRow = ({ goal, currentStatus, onStatusChange, concreet, onConcreetSave
   useEffect(() => { setLocalConcreet(concreet || ''); }, [concreet]);
   useEffect(() => { setLocalLeerlijn(leerlijn || ''); }, [leerlijn]);
 
-  const handleAddLesidee = () => {
+  const handleConcreetSaveAction = async () => {
+    const success = await onConcreetSave(goal.id, localConcreet);
+    if (success) {
+      setConcreetSaved(true);
+      setConcreetError(false);
+      setTimeout(() => setConcreetSaved(false), 2000);
+    } else {
+      setConcreetError(true);
+      setTimeout(() => setConcreetError(false), 3000);
+    }
+  };
+
+  const handleAddLesidee = async () => {
     if (!newLesideeTitel.trim() || !newLesideeTekst.trim()) return;
     const updated = [...(lesideeen || []), { title: newLesideeTitel, content: newLesideeTekst, id: Date.now() }];
-    onLesideeSave(goal.id, updated);
-    setNewLesideeTitel('');
-    setNewLesideeTekst('');
+    const success = await onLesideeSave(goal.id, updated);
+    if (success) {
+      setLesideeSaved(true);
+      setLesideeError(false);
+      setTimeout(() => setLesideeSaved(false), 2000);
+      setNewLesideeTitel('');
+      setNewLesideeTekst('');
+    } else {
+      setLesideeError(true);
+      setTimeout(() => setLesideeError(false), 3000);
+    }
+  };
+
+  const handleLeerlijnSaveAction = async () => {
+    const success = await onLeerlijnSave(goal.id, localLeerlijn);
+    if (success) {
+      setLeerlijnSaved(true);
+      setLeerlijnError(false);
+      setTimeout(() => setLeerlijnSaved(false), 2000);
+    } else {
+      setLeerlijnError(true);
+      setTimeout(() => setLeerlijnError(false), 3000);
+    }
   };
 
   const handleDeleteLesidee = (id) => {
@@ -168,10 +208,23 @@ const GoalRow = ({ goal, currentStatus, onStatusChange, concreet, onConcreetSave
           />
           <div className="flex justify-end mt-2">
             <button 
-              onClick={() => onConcreetSave(goal.id, localConcreet)}
-              className="bg-blue-600 text-white px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-blue-700 transition-colors"
+              onClick={handleConcreetSaveAction}
+              disabled={concreetSaved}
+              className={`${concreetSaved ? 'bg-green-600' : concreetError ? 'bg-red-600 animate-bounce' : 'bg-blue-600 hover:bg-blue-700'} text-white px-3 py-1.5 rounded-md text-xs font-bold flex items-center transition-all duration-300`}
             >
-              <Save size={14} className="mr-1.5"/> Opslaan
+              {concreetSaved ? (
+                <>
+                  <CheckCircle2 size={14} className="mr-1.5 animate-in zoom-in duration-300"/> Opgeslagen!
+                </>
+              ) : concreetError ? (
+                <>
+                  <AlertCircle size={14} className="mr-1.5"/> Fout bij opslaan
+                </>
+              ) : (
+                <>
+                  <Save size={14} className="mr-1.5"/> Opslaan
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -211,9 +264,22 @@ const GoalRow = ({ goal, currentStatus, onStatusChange, concreet, onConcreetSave
             <div className="flex justify-end mt-2">
               <button 
                 onClick={handleAddLesidee}
-                className="bg-amber-600 text-white px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-amber-700 transition-colors"
+                disabled={lesideeSaved}
+                className={`${lesideeSaved ? 'bg-green-600' : lesideeError ? 'bg-red-600 animate-bounce' : 'bg-amber-600 hover:bg-amber-700'} text-white px-3 py-1.5 rounded-md text-xs font-bold flex items-center transition-all duration-300`}
               >
-                <Save size={14} className="mr-1.5"/> Lesidee opslaan
+                {lesideeSaved ? (
+                  <>
+                    <CheckCircle2 size={14} className="mr-1.5 animate-in zoom-in duration-300"/> Opgeslagen!
+                  </>
+                ) : lesideeError ? (
+                  <>
+                    <AlertCircle size={14} className="mr-1.5"/> Fout bij opslaan
+                  </>
+                ) : (
+                  <>
+                    <Save size={14} className="mr-1.5"/> Lesidee opslaan
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -233,10 +299,23 @@ const GoalRow = ({ goal, currentStatus, onStatusChange, concreet, onConcreetSave
           />
           <div className="flex justify-end mt-2">
             <button 
-              onClick={() => onLeerlijnSave(goal.id, localLeerlijn)}
-              className="bg-purple-600 text-white px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-purple-700 transition-colors"
+              onClick={handleLeerlijnSaveAction}
+              disabled={leerlijnSaved}
+              className={`${leerlijnSaved ? 'bg-green-600' : leerlijnError ? 'bg-red-600 animate-bounce' : 'bg-purple-600 hover:bg-purple-700'} text-white px-3 py-1.5 rounded-md text-xs font-bold flex items-center transition-all duration-300`}
             >
-              <Save size={14} className="mr-1.5"/> Opslaan
+              {leerlijnSaved ? (
+                <>
+                  <CheckCircle2 size={14} className="mr-1.5 animate-in zoom-in duration-300"/> Opgeslagen!
+                </>
+              ) : leerlijnError ? (
+                <>
+                  <AlertCircle size={14} className="mr-1.5"/> Fout bij opslaan
+                </>
+              ) : (
+                <>
+                  <Save size={14} className="mr-1.5"/> Opslaan
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -314,7 +393,35 @@ export default function App() {
       }
       setLoadingDb(false);
     };
+
     fetchData();
+
+    // Realtime subscription setup
+    const channel = supabase
+      .channel(`ict_plan_realtime_${selectedGroup}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'ict_plan',
+          filter: `groep=eq.${selectedGroup}`,
+        },
+        (payload) => {
+          if (payload.new) {
+            setStatuses(payload.new.statuses || {});
+            setNotes(payload.new.notes || {});
+            setConcreet(payload.new.concreet || {});
+            setLesideeen(payload.new.lesideeen || {});
+            setLeerlijn(payload.new.leerlijn || {});
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [selectedGroup]);
 
   const filteredData = useMemo(() => {
@@ -331,43 +438,58 @@ export default function App() {
   }, [onderwerpen, activeTab]);
 
   const persistData = async (updates) => {
-    await supabase.from('ict_plan').upsert({
+    // Smart Saving: Fetch latest state first to prevent overwriting other people's work
+    // especially since we use JSONB columns for multiple keys
+    const { data: latestData } = await supabase
+      .from('ict_plan')
+      .select('*')
+      .eq('groep', selectedGroup)
+      .single();
+
+    const mergedData = {
       groep: selectedGroup,
-      statuses,
-      notes,
-      concreet,
-      lesideeen,
-      leerlijn,
-      ...updates
-    }, { onConflict: 'groep' });
+      statuses: { ...(latestData?.statuses || {}), ...(updates.statuses || statuses) },
+      notes: { ...(latestData?.notes || {}), ...(updates.notes || notes) },
+      concreet: { ...(latestData?.concreet || {}), ...(updates.concreet || concreet) },
+      lesideeen: { ...(latestData?.lesideeen || {}), ...(updates.lesideeen || lesideeen) },
+      leerlijn: { ...(latestData?.leerlijn || {}), ...(updates.leerlijn || leerlijn) }
+    };
+
+    const { error } = await supabase.from('ict_plan').upsert(mergedData, { onConflict: 'groep' });
+
+    if (error) {
+      console.error('Opslaan mislukt:', error);
+      return false;
+    }
+    return true;
   };
 
   const handleStatusChange = async (goalId, newStatus) => {
     const statusToSet = statuses[goalId] === newStatus ? null : newStatus;
     const newStatuses = { ...statuses, [goalId]: statusToSet };
     setStatuses(newStatuses);
-    persistData({ statuses: newStatuses });
+    return await persistData({ statuses: newStatuses });
   };
 
   const handleNoteChange = (subthema, newNote) => setNotes(prev => ({ ...prev, [subthema]: newNote }));
-  const handleNoteBlur = async () => persistData({ notes });
+  const handleNoteBlur = async () => await persistData({ notes });
 
-  const handleConcreetSave = (goalId, value) => {
+  const handleConcreetSave = async (goalId, value) => {
     const updated = { ...concreet, [goalId]: value };
     setConcreet(updated);
-    persistData({ concreet: updated });
+    return await persistData({ concreet: updated });
   };
 
-  const handleLeerlijnSave = (goalId, value) => {
+  const handleLeerlijnSave = async (goalId, value) => {
     const updated = { ...leerlijn, [goalId]: value };
     setLeerlijn(updated);
-    persistData({ leerlijn: updated });
+    return await persistData({ leerlijn: updated });
   };
 
-  const handleLesideeSave = (goalId, list) => {
+  const handleLesideeSave = async (goalId, list) => {
     const updated = { ...lesideeen, [goalId]: list };
     setLesideeen(updated);
-    persistData({ lesideeen: updated });
+    return await persistData({ lesideeen: updated });
   };
 
   const groupedGoals = useMemo(() => {
