@@ -4,12 +4,9 @@ import {
   LayoutList, Save, AlertCircle, PlayCircle, Loader2, Cloud,
   Baby, Rocket
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from './supabaseClient';
 import { LEERPLAN_DATA } from './data';
-
-const GROUPS = {
-  kleuters: { name: 'Kleuters', ages: ['Leeftijd 3-4', 'Leeftijd 4-5', 'Leeftijd 5-6'], icon: Baby, color: 'bg-pink-500' }
-};
 
 const THEME_COLORS = {
   "Digitale informatievaardigheid": { bg: "bg-sky-50", border: "border-sky-300", header: "bg-sky-600", text: "text-sky-800" },
@@ -359,7 +356,8 @@ const SubthemeGroup = ({ onderwerp, subthema, goals, statuses, note, onStatusCha
 };
 
 export default function App() {
-  const [selectedGroup, setSelectedGroup] = useState('kleuters'); // Default to kleuters
+  const [schoolLevel, setSchoolLevel] = useState(null); // null (Menu), 'kleuter', 'lager'
+  const [selectedGroup, setSelectedGroup] = useState('kleuter');
   const [loadingDb, setLoadingDb] = useState(false);
   const [statuses, setStatuses] = useState({});
   const [notes, setNotes] = useState({});
@@ -367,15 +365,24 @@ export default function App() {
   const [lesideeen, setLesideeen] = useState({});
   const [leerlijn, setLeerlijn] = useState({});
 
+  // Lager school specific filters
+  const [lagerAges, setLagerAges] = useState([
+    'Leeftijd 3-4', 'Leeftijd 4-5', 'Leeftijd 5-6',
+    'Leeftijd 6-7', 'Leeftijd 7-8', 'Leeftijd 8-9', 'Leeftijd 9-10', 'Leeftijd 10-11', 'Leeftijd 11-12'
+  ]);
+
   useEffect(() => {
-    if (!selectedGroup) return;
+    if (!schoolLevel) return;
+    
+    const dbKey = schoolLevel; // 'kleuter' or 'lager'
+    setSelectedGroup(dbKey);
     setLoadingDb(true);
     
     const fetchData = async () => {
       const { data, error } = await supabase
         .from('ict_plan')
         .select('*')
-        .eq('groep', selectedGroup)
+        .eq('groep', dbKey)
         .single();
 
       if (data) {
@@ -398,14 +405,14 @@ export default function App() {
 
     // Realtime subscription setup
     const channel = supabase
-      .channel(`ict_plan_realtime_${selectedGroup}`)
+      .channel(`ict_plan_realtime_${dbKey}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'ict_plan',
-          filter: `groep=eq.${selectedGroup}`,
+          filter: `groep=eq.${dbKey}`,
         },
         (payload) => {
           if (payload.new) {
@@ -422,15 +429,21 @@ export default function App() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [selectedGroup]);
+  }, [schoolLevel]);
 
   const filteredData = useMemo(() => {
-    if (!selectedGroup) return [];
-    const ages = GROUPS[selectedGroup].ages;
-    return LEERPLAN_DATA.filter(d => d.leeftijdsgroepen.some(age => ages.includes(age)));
-  }, [selectedGroup]);
+    if (!schoolLevel) return [];
+    
+    if (schoolLevel === 'kleuter') {
+      const kleuterAges = ['Leeftijd 3-4', 'Leeftijd 4-5', 'Leeftijd 5-6'];
+      return LEERPLAN_DATA.filter(d => d.leeftijdsgroepen.some(age => kleuterAges.includes(age)));
+    } else {
+      // Lager: Filter by selected ages
+      return LEERPLAN_DATA.filter(d => d.leeftijdsgroepen.some(age => lagerAges.includes(age)));
+    }
+  }, [schoolLevel, lagerAges]);
 
-  const onderwerpen = useMemo(() => [...new Set(filteredData.map(d => d.onderwerp))], [filteredData]);
+  const onderwerpen = useMemo(() => [...new Set(LEERPLAN_DATA.map(d => d.onderwerp))], []);
   const [activeTab, setActiveTab] = useState('');
 
   useEffect(() => {
@@ -438,16 +451,18 @@ export default function App() {
   }, [onderwerpen, activeTab]);
 
   const persistData = async (updates) => {
+    if (!schoolLevel) return false;
+    const dbKey = schoolLevel;
+
     // Smart Saving: Fetch latest state first to prevent overwriting other people's work
-    // especially since we use JSONB columns for multiple keys
     const { data: latestData } = await supabase
       .from('ict_plan')
       .select('*')
-      .eq('groep', selectedGroup)
+      .eq('groep', dbKey)
       .single();
 
     const mergedData = {
-      groep: selectedGroup,
+      groep: dbKey,
       statuses: { ...(latestData?.statuses || {}), ...(updates.statuses || statuses) },
       notes: { ...(latestData?.notes || {}), ...(updates.notes || notes) },
       concreet: { ...(latestData?.concreet || {}), ...(updates.concreet || concreet) },
@@ -492,8 +507,14 @@ export default function App() {
     return await persistData({ lesideeen: updated });
   };
 
+  const toggleLagerAge = (age) => {
+    setLagerAges(prev => 
+      prev.includes(age) ? prev.filter(a => a !== age) : [...prev, age]
+    );
+  };
+
   const groupedGoals = useMemo(() => {
-    if (!selectedGroup) return {};
+    if (!schoolLevel) return {};
     const goalsForTab = filteredData.filter(d => d.onderwerp === activeTab);
     const groups = {};
     goalsForTab.forEach(goal => {
@@ -501,136 +522,267 @@ export default function App() {
       groups[goal.subthema].push(goal);
     });
     return groups;
-  }, [filteredData, activeTab, selectedGroup]);
+  }, [filteredData, activeTab, schoolLevel]);
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans text-slate-900 flex flex-col md:flex-row">
-      {/* Sticky Sidebar */}
-      <div className="w-full md:w-72 bg-white shadow-md flex-shrink-0 flex flex-col z-10 md:sticky md:top-0 md:h-screen">
-        <div className="p-6 border-b border-slate-100 bg-slate-800 text-white relative">
-          <h1 className="text-xl font-extrabold mb-1">{GROUPS[selectedGroup].name}</h1>
-          <p className="text-slate-400 text-sm font-medium">ICT Leerplandoelen</p>
-        </div>
-        
-        <div className="p-4 flex-grow overflow-y-auto">
-          <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">Domeinen</h2>
-          <nav className="space-y-2">
-            {onderwerpen.map(onderwerp => {
-              const theme = THEME_COLORS[onderwerp] || THEME_COLORS["Digitale informatievaardigheid"];
-              return (
-                <button key={onderwerp} onClick={() => { setActiveTab(onderwerp); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className={`w-full text-left px-3 py-3 rounded-lg text-sm font-bold transition-all border-l-4 ${ activeTab === onderwerp ? `${theme.bg} ${theme.text} ${theme.border} shadow-sm` : 'bg-white border-transparent text-slate-600 hover:bg-slate-50'}`}>
-                  {onderwerp}
-                </button>
-              );
-            })}
-          </nav>
-          <div className="mt-8 pt-6 border-t border-slate-200">
-            <button 
-              onClick={() => { setActiveTab('Leerlijn Overzicht'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} 
-              className={`w-full text-left px-4 py-3 rounded-lg text-sm font-bold transition-all flex items-center justify-center shadow-md ${ activeTab === 'Leerlijn Overzicht' ? 'bg-purple-600 text-white' : 'bg-white border text-slate-800 hover:bg-slate-50'}`}
+    <AnimatePresence mode="wait">
+      {!schoolLevel ? (
+        <motion.div 
+          key="menu"
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 1.05 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="min-h-screen bg-slate-100 flex items-center justify-center p-6 bg-[radial-gradient(circle_at_top_right,_var(--tw-gradient-stops))] from-blue-100 via-slate-100 to-purple-100"
+        >
+          <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8">
+            <motion.div 
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="bg-white p-8 rounded-3xl shadow-xl border border-pink-100 flex flex-col items-center text-center group cursor-pointer" 
+              onClick={() => setSchoolLevel('kleuter')}
             >
-              <Rocket size={18} className="mr-2" /> Leerlijn Overzicht
-            </button>
+              <div className="bg-pink-500 p-6 rounded-2xl mb-6 shadow-lg shadow-pink-200 group-hover:rotate-6 transition-transform">
+                <Baby size={64} className="text-white" />
+              </div>
+              <h2 className="text-3xl font-black text-slate-800 mb-4">Kleuterschool</h2>
+              <p className="text-slate-500 mb-8 text-sm leading-relaxed">ICT-leerdoelen voor de jongste ontdekkers.<br/>Focus op spelend leren en eerste digitale ervaringen.</p>
+              <button className="bg-pink-500 text-white px-8 py-3 rounded-xl font-bold text-lg shadow-lg hover:bg-pink-600 transition-colors">Starten</button>
+            </motion.div>
+
+            <motion.div 
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="bg-white p-8 rounded-3xl shadow-xl border border-blue-100 flex flex-col items-center text-center group cursor-pointer" 
+              onClick={() => setSchoolLevel('lager')}
+            >
+              <div className="bg-blue-600 p-6 rounded-2xl mb-6 shadow-lg shadow-blue-200 group-hover:-rotate-6 transition-transform">
+                <Rocket size={64} className="text-white" />
+              </div>
+              <h2 className="text-3xl font-black text-slate-800 mb-4">Lagere School</h2>
+              <p className="text-slate-500 mb-8 text-sm leading-relaxed">ICT-leerdoelen voor 6 tot 12 jaar.<br/>Ontwikkeling van vaardigheden, creatie en mediawijsheid.</p>
+              <button className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold text-lg shadow-lg hover:bg-blue-700 transition-colors">Starten</button>
+            </motion.div>
           </div>
-        </div>
-      </div>
+        </motion.div>
+      ) : (
+        <motion.div 
+          key="app"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="min-h-screen bg-slate-100 font-sans text-slate-900 flex flex-col md:flex-row"
+        >
+          {/* Sticky Sidebar */}
+          <div className="w-full md:w-72 bg-white shadow-md flex-shrink-0 flex flex-col z-10 md:sticky md:top-0 md:h-screen transition-all">
+            <div className={`p-6 border-b border-slate-100 text-white relative ${schoolLevel === 'kleuter' ? 'bg-pink-600' : 'bg-blue-700'}`}>
+              <button onClick={() => setSchoolLevel(null)} className="absolute top-2 right-2 text-white/50 hover:text-white transition-colors">
+                <LayoutList size={16} />
+              </button>
+              <h1 className="text-xl font-extrabold mb-1">{schoolLevel === 'kleuter' ? 'Kleuterschool' : 'Lagere School'}</h1>
+              <p className="text-white/70 text-xs font-medium uppercase tracking-widest">Digitale Competenties</p>
+            </div>
+            
+            <div className="p-4 flex-grow overflow-y-auto">
+              <h2 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">Domeinen</h2>
+              <nav className="space-y-1">
+                {onderwerpen.map(onderwerp => {
+                  const theme = THEME_COLORS[onderwerp] || THEME_COLORS["Digitale informatievaardigheid"];
+                  return (
+                    <button 
+                      key={onderwerp} 
+                      onClick={() => { setActiveTab(onderwerp); window.scrollTo({ top: 0, behavior: 'smooth' }); }} 
+                      className={`w-full text-left px-3 py-2.5 rounded-lg text-sm font-bold transition-all border-l-4 ${ activeTab === onderwerp ? `${theme.bg} ${theme.text} ${theme.border} shadow-sm` : 'bg-white border-transparent text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      {onderwerp}
+                    </button>
+                  );
+                })}
+              </nav>
+              <div className="mt-6 pt-6 border-t border-slate-100">
+                <button 
+                  onClick={() => { setActiveTab('Leerlijn Overzicht'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} 
+                  className={`w-full text-left px-4 py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center shadow-lg ${ activeTab === 'Leerlijn Overzicht' ? 'bg-purple-600 text-white' : 'bg-white border border-slate-200 text-slate-800 hover:bg-slate-50'}`}
+                >
+                  <Rocket size={18} className="mr-2" /> Leerlijn Overzicht
+                </button>
+              </div>
+              
+              <div className="mt-8">
+                <button onClick={() => setSchoolLevel(null)} className="w-full text-center text-slate-400 hover:text-slate-600 text-xs font-bold uppercase transition-colors">
+                  Terug naar hoofdmenu
+                </button>
+              </div>
+            </div>
+          </div>
 
-      {/* Main Content Area - Natural Scroll */}
-      <div className="flex-grow bg-slate-100 min-h-screen">
-        {loadingDb ? (
-          <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="animate-spin text-blue-500 w-10 h-10" /></div>
-        ) : (
-          <div className="max-w-5xl mx-auto p-6 md:p-10 pb-20">
-            {activeTab === 'Leerlijn Overzicht' ? (
-              <div className="animate-in fade-in duration-300">
-                <div className="mb-8 flex justify-between items-center">
-                  <h2 className="text-3xl font-extrabold text-slate-800">Leerlijn Overzicht</h2>
-                  <div className="bg-purple-100 text-purple-700 px-4 py-2 rounded-lg text-sm font-bold border border-purple-200">
-                    Totaal gepland: {Object.values(leerlijn).filter(v => v && v.trim() !== '').length} doelen
-                  </div>
-                </div>
+          {/* Main Content Area */}
+          <div className="flex-grow bg-slate-50 min-h-screen">
+            {loadingDb ? (
+              <div className="flex items-center justify-center min-h-[400px]"><Loader2 className="animate-spin text-blue-500 w-10 h-10" /></div>
+            ) : (
+              <div className="max-w-5xl mx-auto p-6 md:p-8 pb-20">
+                {schoolLevel === 'lager' && activeTab !== 'Leerlijn Overzicht' && (
+                  <motion.div 
+                    initial={{ opacity: 0, y: -20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-6 bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-4"
+                  >
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex items-center gap-2 mr-2">
+                        <Baby size={16} className="text-pink-500" />
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Kleuter:</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {['Leeftijd 3-4', 'Leeftijd 4-5', 'Leeftijd 5-6'].map(age => (
+                          <button 
+                            key={age} 
+                            onClick={() => toggleLagerAge(age)}
+                            className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all border ${lagerAges.includes(age) ? 'bg-pink-500 border-pink-500 text-white shadow-md' : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-pink-300'}`}
+                          >
+                            {age.replace('Leeftijd ', '')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <div className="flex items-center gap-2 mr-2">
+                        <Rocket size={16} className="text-blue-600" />
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Lager:</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {['Leeftijd 6-7', 'Leeftijd 7-8', 'Leeftijd 8-9', 'Leeftijd 9-10', 'Leeftijd 10-11', 'Leeftijd 11-12'].map(age => (
+                          <button 
+                            key={age} 
+                            onClick={() => toggleLagerAge(age)}
+                            className={`px-3 py-1.5 rounded-full text-[10px] font-bold transition-all border ${lagerAges.includes(age) ? 'bg-blue-600 border-blue-600 text-white shadow-md' : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-blue-300'}`}
+                          >
+                            {age.replace('Leeftijd ', '')}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
 
-                <div className="space-y-10">
-                  {onderwerpen.map(onderwerp => {
-                    const goalsInOnderwerp = filteredData.filter(d => d.onderwerp === onderwerp);
-                    return (
-                      <div key={onderwerp} className="bg-white rounded-xl shadow-sm border overflow-hidden">
-                        <div className={`${THEME_COLORS[onderwerp]?.header || 'bg-slate-800'} px-6 py-4 text-white uppercase tracking-wider text-sm font-black`}>
-                          {onderwerp}
-                        </div>
-                        <div className="overflow-x-auto">
-                          <table className="w-full text-left text-sm">
-                            <thead>
-                              <tr className="bg-slate-50 border-b border-slate-200">
-                                <th className="px-6 py-3 font-bold text-slate-600 w-24">ID</th>
-                                <th className="px-6 py-3 font-bold text-slate-600">Leerplandoel</th>
-                                <th className="px-6 py-3 font-bold text-purple-700 bg-purple-50/50">Wanneer (Leerlijn)</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {goalsInOnderwerp.map(goal => (
-                                <tr key={goal.id} className="hover:bg-slate-50/50 transition-colors">
-                                  <td className="px-6 py-4 font-mono text-xs text-slate-400 align-top">{goal.id}</td>
-                                  <td className="px-6 py-4">
-                                    <div className="text-slate-700 font-medium leading-relaxed mb-1.5">{goal.leerdoel}</div>
-                                    {goal.leeftijdsgroepen && (
-                                      <div className="flex flex-wrap gap-2">
-                                        {goal.leeftijdsgroepen.map(age => (
-                                          <span key={age} className="text-[10px] font-bold text-slate-400 border-l-2 border-slate-200 pl-1.5 leading-none">
-                                            {age.replace('Leeftijd ', '')}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </td>
-                                  <td className="px-6 py-4 bg-purple-50/30 align-top">
-                                    {leerlijn[goal.id] ? (
-                                      <span className="text-purple-800 font-bold">{leerlijn[goal.id]}</span>
-                                    ) : (
-                                      <span className="text-slate-300 italic">Nog niet ingevuld</span>
-                                    )}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                <AnimatePresence mode="wait">
+                  {activeTab === 'Leerlijn Overzicht' ? (
+                    <motion.div 
+                      key="overzicht"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <h2 className="text-3xl font-black text-slate-800">Leerlijn Overzicht</h2>
+                        <div className="bg-purple-100 text-purple-700 px-4 py-2 rounded-xl text-xs font-bold border border-purple-200 shadow-sm">
+                          Totaal gepland: {Object.values(leerlijn).filter(v => v && v.trim() !== '').length} doelen
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : (
-              <div className="animate-in fade-in duration-300">
-                <div className="mb-8">
-                  <h2 className={`text-3xl font-extrabold mb-2 ${THEME_COLORS[activeTab]?.text || 'text-slate-800'}`}>{activeTab}</h2>
-                </div>
-                <div className="space-y-8">
-                  {Object.entries(groupedGoals).map(([subthema, goals]) => (
-                    <SubthemeGroup 
-                      key={subthema} 
-                      onderwerp={activeTab} 
-                      subthema={subthema} 
-                      goals={goals} 
-                      statuses={statuses} 
-                      note={notes[subthema]} 
-                      onStatusChange={handleStatusChange} 
-                      onNoteChange={handleNoteChange} 
-                      onNoteBlur={handleNoteBlur}
-                      concreetData={concreet}
-                      onConcreetSave={handleConcreetSave}
-                      leerlijnData={leerlijn}
-                      onLeerlijnSave={handleLeerlijnSave}
-                      lesideeenData={lesideeen}
-                      onLesideeSave={handleLesideeSave}
-                    />
-                  ))}
-                </div>
+
+                      <div className="space-y-8">
+                        {onderwerpen.map(onderwerp => {
+                          const goalsInOnderwerp = filteredData.filter(d => d.onderwerp === onderwerp);
+                          if (goalsInOnderwerp.length === 0) return null;
+                          return (
+                            <div key={onderwerp} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                              <div className={`${THEME_COLORS[onderwerp]?.header || 'bg-slate-800'} px-6 py-4 text-white uppercase tracking-wider text-xs font-black`}>
+                                {onderwerp}
+                              </div>
+                              <div className="overflow-x-auto">
+                                <table className="w-full text-left text-sm">
+                                  <thead>
+                                    <tr className="bg-slate-50/50 border-b border-slate-100">
+                                      <th className="px-6 py-3 font-bold text-slate-400 w-24 text-[10px] uppercase">ID</th>
+                                      <th className="px-6 py-3 font-bold text-slate-400 text-[10px] uppercase">Leerplandoel</th>
+                                      <th className="px-6 py-3 font-bold text-purple-700 bg-purple-50/50 text-[10px] uppercase">Wanneer</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-slate-100">
+                                    {goalsInOnderwerp.map(goal => (
+                                      <tr key={goal.id} className="hover:bg-slate-50/30 transition-colors">
+                                        <td className="px-6 py-4 font-mono text-xs text-slate-300 align-top">{goal.id}</td>
+                                        <td className="px-6 py-4">
+                                          <div className="text-slate-700 font-medium leading-relaxed mb-1.5">{goal.leerdoel}</div>
+                                          {goal.leeftijdsgroepen && (
+                                            <div className="flex flex-wrap gap-2">
+                                              {goal.leeftijdsgroepen.map(age => (
+                                                <span key={age} className="text-[10px] font-bold text-slate-400 border-l-2 border-slate-200 pl-1.5 leading-none">
+                                                  {age.replace('Leeftijd ', '')}
+                                                </span>
+                                              ))}
+                                            </div>
+                                          )}
+                                        </td>
+                                        <td className="px-6 py-4 bg-purple-50/20 align-top">
+                                          {leerlijn[goal.id] ? (
+                                            <span className="text-purple-800 font-bold">{leerlijn[goal.id]}</span>
+                                          ) : (
+                                            <span className="text-slate-300 italic">Open</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </motion.div>
+                  ) : (
+                    <motion.div 
+                      key="goals"
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: -20 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <div className="mb-8">
+                        <h2 className={`text-4xl font-black mb-2 ${THEME_COLORS[activeTab]?.text || 'text-slate-800'}`}>{activeTab}</h2>
+                        <p className="text-slate-400 text-sm font-medium">Beheer en specificeer de leerplandoelen voor dit domein.</p>
+                      </div>
+                      <div className="space-y-8">
+                        {Object.keys(groupedGoals).length > 0 ? (
+                          Object.entries(groupedGoals).map(([subthema, goals]) => (
+                            <SubthemeGroup 
+                              key={subthema} 
+                              onderwerp={activeTab} 
+                              subthema={subthema} 
+                              goals={goals} 
+                              statuses={statuses} 
+                              note={notes[subthema]} 
+                              onStatusChange={handleStatusChange} 
+                              onNoteChange={handleNoteChange} 
+                              onNoteBlur={handleNoteBlur}
+                              concreetData={concreet}
+                              onConcreetSave={handleConcreetSave}
+                              leerlijnData={leerlijn}
+                              onLeerlijnSave={handleLeerlijnSave}
+                              lesideeenData={lesideeen}
+                              onLesideeSave={handleLesideeSave}
+                            />
+                          ))
+                        ) : (
+                          <div className="bg-white p-12 rounded-3xl border border-dashed border-slate-200 text-center">
+                            <div className="bg-slate-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                              <Info size={32} className="text-slate-300" />
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-800 mb-2">Geen leerdoelen gevonden</h3>
+                            <p className="text-slate-500 max-w-sm mx-auto">Er zijn voor de geselecteerde leeftijden geen leerdoelen gedefinieerd in dit domein.</p>
+                          </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             )}
           </div>
-        )}
-      </div>
-    </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
