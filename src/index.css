@@ -1,0 +1,25 @@
+@import "tailwindcss";
+
+/* Ensure printing is robust and fully utilizes A4 sizing */
+@media print {
+  @page {
+    margin: 1.5cm;
+    size: A4 portrait;
+  }
+  
+  html, body {
+    background-color: white !important;
+    color: black !important;
+  }
+  
+  .no-print {
+    display: none !important;
+  }
+
+  /* Target the main scroll container in App.jsx to ensure it expands fully in print */
+  .flex-grow, .min-h-screen, .h-screen {
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+  }
+}
