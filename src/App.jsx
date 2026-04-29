@@ -321,8 +321,28 @@ const GoalRow = ({ goal, currentStatus, onStatusChange, concreet, onConcreetSave
   );
 };
 
-const SubthemeGroup = ({ onderwerp, subthema, goals, statuses, note, onStatusChange, onNoteChange, onNoteBlur, concreetData, onConcreetSave, leerlijnData, onLeerlijnSave, lesideeenData, onLesideeSave }) => {
+const SubthemeGroup = ({ onderwerp, subthema, goals, statuses, note, onNoteSave, onStatusChange, concreetData, onConcreetSave, leerlijnData, onLeerlijnSave, lesideeenData, onLesideeSave }) => {
   const theme = THEME_COLORS[onderwerp] || THEME_COLORS["Digitale informatievaardigheid"];
+  const [localNote, setLocalNote] = useState(note || '');
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    setLocalNote(note || '');
+  }, [note]);
+
+  const handleSave = async () => {
+    const success = await onNoteSave(subthema, localNote);
+    if (success) {
+      setSaved(true);
+      setError(false);
+      setTimeout(() => setSaved(false), 2000);
+    } else {
+      setError(true);
+      setTimeout(() => setError(false), 3000);
+    }
+  };
+
   return (
     <div className={`mb-8 rounded-xl overflow-hidden shadow-md border ${theme.border}`}>
       <div className={`${theme.header} px-5 py-3 text-white flex justify-between items-center`}>
@@ -348,8 +368,33 @@ const SubthemeGroup = ({ onderwerp, subthema, goals, statuses, note, onStatusCha
         <label className={`block text-sm font-bold uppercase mb-2 flex items-center ${theme.text}`}>
           <Lightbulb size={16} className="mr-2" /> Onze gezamenlijke aanpak voor "{subthema}"
         </label>
-        <textarea value={note || ''} onChange={(e) => onNoteChange(subthema, e.target.value)} onBlur={onNoteBlur} placeholder="Typ hier jullie afspraken of lesintegratie..." className="w-full min-h-[100px] p-3 border rounded-lg text-sm bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none" />
-        <div className="flex justify-end mt-1 text-slate-400 text-[10px] font-bold uppercase"><Cloud size={12} className="mr-1"/> Slaat automatisch op</div>
+        <textarea 
+          value={localNote} 
+          onChange={(e) => setLocalNote(e.target.value)} 
+          placeholder="Typ hier jullie afspraken of lesintegratie..." 
+          className="w-full min-h-[120px] p-4 border rounded-xl text-sm bg-slate-50 focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
+        />
+        <div className="flex justify-end mt-3">
+          <button 
+            onClick={handleSave}
+            disabled={saved}
+            className={`${saved ? 'bg-green-600' : error ? 'bg-red-600 animate-bounce' : 'bg-slate-800 hover:bg-slate-900'} text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center transition-all duration-300 shadow-md`}
+          >
+            {saved ? (
+              <>
+                <CheckCircle2 size={16} className="mr-2 animate-in zoom-in duration-300"/> Afspraak opgeslagen!
+              </>
+            ) : error ? (
+              <>
+                <AlertCircle size={16} className="mr-2"/> Fout bij opslaan
+              </>
+            ) : (
+              <>
+                <Save size={16} className="mr-2"/> Afspraak opslaan
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -486,8 +531,11 @@ export default function App() {
     return await persistData({ statuses: newStatuses });
   };
 
-  const handleNoteChange = (subthema, newNote) => setNotes(prev => ({ ...prev, [subthema]: newNote }));
-  const handleNoteBlur = async () => await persistData({ notes });
+  const handleNoteSave = async (subthema, newNote) => {
+    const updated = { ...notes, [subthema]: newNote };
+    setNotes(updated);
+    return await persistData({ notes: updated });
+  };
 
   const handleConcreetSave = async (goalId, value) => {
     const updated = { ...concreet, [goalId]: value };
@@ -747,23 +795,22 @@ export default function App() {
                       <div className="space-y-8">
                         {Object.keys(groupedGoals).length > 0 ? (
                           Object.entries(groupedGoals).map(([subthema, goals]) => (
-                            <SubthemeGroup 
-                              key={subthema} 
-                              onderwerp={activeTab} 
-                              subthema={subthema} 
-                              goals={goals} 
-                              statuses={statuses} 
-                              note={notes[subthema]} 
-                              onStatusChange={handleStatusChange} 
-                              onNoteChange={handleNoteChange} 
-                              onNoteBlur={handleNoteBlur}
-                              concreetData={concreet}
-                              onConcreetSave={handleConcreetSave}
-                              leerlijnData={leerlijn}
-                              onLeerlijnSave={handleLeerlijnSave}
-                              lesideeenData={lesideeen}
-                              onLesideeSave={handleLesideeSave}
-                            />
+                          <SubthemeGroup 
+                            key={subthema} 
+                            onderwerp={activeTab} 
+                            subthema={subthema} 
+                            goals={goals} 
+                            statuses={statuses} 
+                            note={notes[subthema]} 
+                            onStatusChange={handleStatusChange} 
+                            onNoteSave={handleNoteSave} 
+                            concreetData={concreet}
+                            onConcreetSave={handleConcreetSave}
+                            leerlijnData={leerlijn}
+                            onLeerlijnSave={handleLeerlijnSave}
+                            lesideeenData={lesideeen}
+                            onLesideeSave={handleLesideeSave}
+                          />
                           ))
                         ) : (
                           <div className="bg-white p-12 rounded-3xl border border-dashed border-slate-200 text-center">
